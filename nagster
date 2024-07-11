@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+PROGNAME=${0##*/}
+EVENT_NAME="${EVENT_NAME:-"Heads up!"}"
+EVENT_MESSAGE="${EVENT_MESSAGE:-}"
+NOTIFY_SYSTEM="${NOTIFY_SYSTEM:-false}" 
+NOTIFY_POPUP="${NOTIFY_POPUP:-false}"
+NOTIFY_WALL="${NOTIFY_WALL:-false}"
+NOTIFY_WRITE="${NOTIFY_WRITE:-false}"
+NOTIFY_TERMINAL="${NOTIFY_TERMINAL:-false}"
+NOTIFY_APP="${NOTIFY_APP:-false}"
+NOTIFY_ARGS="${NOTIFY_ARGS:-}"
+DEFAULT_NOTIFY_METHOD="${DEFAULT_NOTIFY_METHOD:-"NOTIFY_POPUP"}"
+DEBUG="${DEBUG:-false}"
+
+error_exit() {
+  echo "$PROGNAME: ${1:-"Unknown Error"}" 1>&2
+  exit 1
+}
+
+usage() {
+  echo -e "Usage: $PROGNAME [-h|--help] [-e|--event-name EVENT_NAME] [-m|--message EVENT_MESSAGE] [--system] [--popup] [--wall] [--write] [--terminal] [--app APP_NAME]"
+}
+
+help_message() {
+  cat <<- _EOF_
+  $PROGNAME
+  nag the user about an event
+
+  Send a notification to the user about an event. The notification can be sent using the system's event notification system,
+  written to all users' terminals, written to the terminal of the user running the script, or displayed in a new Terminal window.
+
+  Custom applications can be used to notify the user and the special strings "{event}" and "{message}" can be used to pass the 
+  event name and message to the application. See options and examples below.
+  $(usage)
+
+  Options:
+  -e, --event-name EVENT_NAME  event
+    Where 'EVENT_NAME' is the .
+  -m, --message EVENT_MESSAGE  message
+    Where 'EVENT_MESSAGE' is the .
+  -a|--app APP_NAME_AND_ARGS
+    Where 'APP_NAME_AND_ARGS' is the command or path to an application, including any arguments.
+    Use the special string "{event}" to represent the event name and "{message}" to represent the message 
+    if passing the event and message to the application is supported. See the examples below.
+  --system  Use the system event notification system. This is the default if no other notification method is specified.
+    If another notification method is specified, this option will be ignored unless also provided.
+  --popup Use a popup dialog box to display the event. This option is currently available on macOS only.
+  --wall  Write the message to all users' terminals. User must have root privileges to use this option.
+  --write  Write the message to the terminal of the user running the script. User must have messages enabled to use this
+    option and may not work on all systems. YMMV.
+  --terminal Pops up a new Terminal window to display the event. This option is only available on macOS.
+  -h, --help  Display this help message and exit.
+
+  Examples:
+  $PROGNAME -e "Backup" -m "Backup completed successfully." --system
+  $PROGNAME -e "HEY!" -m "Standup now!" --popup
+  $PROGNAME -m "Meeting in 10" --popup
+  $PROGNAME -e "Meeting" -m "You have a meeting in 15 minutes." --write --app "sms.sh {event} {message}"
+  $PROGNAME -e "Meeting" -m "You have a meeting in 15 minutes." --write --app "slack-reminder.sh {message}"
+
+_EOF_
+  return
+}
+
+notify_system() {
+  osascript -e "display notification \"$EVENT_MESSAGE\" with title \"$EVENT_NAME\"" >/dev/null
+}
+
+notify_popup() {
+  osascript <<EOF >/dev/null
+  tell application "System Events"
+    display dialog "${EVENT_MESSAGE}" buttons {"OK"} default button 1 with title "${EVENT_NAME}"
+  end tell
+EOF
+}
+
+notify_wall() {
+  if [[ -n $EVENT_MESSAGE ]]; then
+    echo "$EVENT_NAME: $EVENT_MESSAGE" | wall
+  else
+    echo "$EVENT_NAME" | wall
+  fi
+}
+
+notify_write() {
+  if [[ -n $EVENT_MESSAGE ]]; then
+    echo "$EVENT_NAME: $EVENT_MESSAGE" | write "$USER"
+  else
+    echo "$EVENT_NAME" | write "$USER"
+  fi
+}
+
+notify_terminal() {
+  if [[ -n $EVENT_MESSAGE ]]; then
+    osascript -e "tell application \"Terminal\" to do script \"echo '$EVENT_NAME: $EVENT_MESSAGE'\""
+  else
+    osascript -e "tell application \"Terminal\" to do script \"echo '$EVENT_NAME'\""
+  fi
+}
+
+notify_app() {
+  echo "TODO: Implement notify_app"
+}
+
+while [[ -n $1 ]]; do
+  case $1 in
+    -h | --help)
+      help_message; exit ;;
+    -e | --event-name)
+      shift; EVENT_NAME="$1" ;;
+    -m | --message)
+      shift; EVENT_MESSAGE="$1" ;;
+    --system)
+      NOTIFY_SYSTEM=true ;;
+    --popup)
+      NOTIFY_POPUP=true ;;
+    --wall)
+      NOTIFY_WALL=true ;;
+    --write)
+      NOTIFY_WRITE=true ;;
+    --terminal)
+      NOTIFY_TERMINAL=true ;;
+    -a | --app)
+      shift; NOTIFY_ARGS="$1";
+      NOTIFY_APP=true;;
+    -*)
+      usage
+      error_exit "Unknown option $1" ;;
+    *) # End of options, assume everything else is the message (so we can pipe in messages)
+      EVENT_MESSAGE="$*" ;;
+  esac
+  shift
+done
+
+# set default notification method if none specified
+if [[ $NOTIFY_SYSTEM == false && $NOTIFY_POPUP == false && $NOTIFY_WALL == false && $NOTIFY_WRITE == false && $NOTIFY_TERMINAL == false && $NOTIFY_APP == false ]]; then
+  case $DEFAULT_NOTIFY_METHOD in
+    NOTIFY_SYSTEM)
+      NOTIFY_SYSTEM=true ;;
+    NOTIFY_POPUP)
+      NOTIFY_POPUP=true ;;
+    NOTIFY_WALL)
+      NOTIFY_WALL=true ;;
+    NOTIFY_WRITE)
+      NOTIFY_WRITE=true ;;
+    NOTIFY_TERMINAL)
+      NOTIFY_TERMINAL=true ;;
+    NOTIFY_APP)
+      NOTIFY_APP=true ;;
+  esac
+fi
+
+export EVENT_NAME EVENT_MESSAGE NOTIFY_SYSTEM NOTIFY_POPUP NOTIFY_WALL NOTIFY_WRITE NOTIFY_TERMINAL NOTIFY_APP NOTIFY_ARGS
+
+if $DEBUG; then
+  echo "EVENT_NAME: $EVENT_NAME"
+  echo "EVENT_MESSAGE: $EVENT_MESSAGE"
+  echo "NOTIFY_SYSTEM: $NOTIFY_SYSTEM"
+  echo "NOTIFY_POPUP: $NOTIFY_POPUP"
+  echo "NOTIFY_WALL: $NOTIFY_WALL"
+  echo "NOTIFY_WRITE: $NOTIFY_WRITE"
+  echo "NOTIFY_TERMINAL: $NOTIFY_TERMINAL"
+  echo "NOTIFY_APP: $NOTIFY_APP"
+fi
+for method in SYSTEM POPUP WALL WRITE TERMINAL APP; do
+  notify="$(eval "echo \$NOTIFY_${method}")"
+  if [[ "true" == "$notify" ]]; then
+    if $DEBUG; then
+      echo "calling notify_${method,,}"
+    fi
+    if [[ $method == "APP" ]]; then
+      [[ -z $NOTIFY_ARGS ]] && error_exit "No application specified for --app option."
+      eval "notify_${method,,} ${NOTIFY_ARGS}"
+    else
+      eval "notify_${method,,}"
+    fi
+  fi
+done
+
