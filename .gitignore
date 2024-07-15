@@ -11,4 +11,4 @@
 !notifiers/**
 !nagster
 !watch-gcal.sh
-
+!install.sh
