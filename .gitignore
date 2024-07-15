@@ -1,0 +1,14 @@
+# ignore everythign
+/*
+
+# except for these files
+!.gitignore
+!.env.example
+!Makefile
+!README.md
+!LICENSE
+!notifiers/
+!notifiers/**
+!nagster
+!watch-gcal.sh
+
