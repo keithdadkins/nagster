@@ -33,6 +33,7 @@ help_message() {
 
   Custom applications can be used to notify the user and the special strings "{event}" and "{message}" can be used to pass the 
   event name and message to the application. See options and examples below.
+
   $(usage)
 
   Options:
@@ -59,6 +60,9 @@ help_message() {
   $PROGNAME -m "Meeting in 10" --popup
   $PROGNAME -e "Meeting" -m "You have a meeting in 15 minutes." --write --app "sms.sh {event} {message}"
   $PROGNAME -e "Meeting" -m "You have a meeting in 15 minutes." --write --app "slack-reminder.sh {message}"
+
+  Use with other utils like gcalcli to notify about upcoming events:
+  $> gcalcli remind 60 -- '$PROGNAME -e "Heads Up" -m "%s" --popup'
 
 _EOF_
   return
